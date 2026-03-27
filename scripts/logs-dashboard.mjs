@@ -91,12 +91,21 @@ function readDashboardHtml() {
 const server = http.createServer((req, res) => {
   const url = req.url || "/";
 
-  if (url === "/health") {
+  const normalized =
+    url === "/logs" || url.startsWith("/logs?")
+      ? "/"
+      : url === "/logs/" || url.startsWith("/logs/?")
+        ? "/"
+        : url.startsWith("/logs/api/logs")
+          ? "/api/logs"
+          : url;
+
+  if (normalized === "/health" || url === "/logs/health") {
     sendJson(res, { ok: true, service: "logs-dashboard", dbPath });
     return;
   }
 
-  if (url === "/api/logs") {
+  if (normalized === "/api/logs") {
     try {
       const payload = readLogs();
       if (payload.tasks && payload.tasks.__error) {
@@ -126,14 +135,14 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  if (url === "/" || url === "/index.html" || url.startsWith("/?") || url.startsWith("/index.html?")) {
+  if (normalized === "/" || normalized === "/index.html" || normalized.startsWith("/?") || normalized.startsWith("/index.html?")) {
     const html = readDashboardHtml();
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(html);
     return;
   }
 
-  if (url === "/favicon.ico") {
+  if (normalized === "/favicon.ico") {
     res.writeHead(204);
     res.end();
     return;

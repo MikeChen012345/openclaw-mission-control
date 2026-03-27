@@ -354,7 +354,8 @@
 
     async function refresh() {
       try {
-        const res = await fetch("/api/logs", { cache: "no-store" });
+        const basePrefix = window.location.pathname.startsWith("/logs") ? "/logs" : "";
+        const res = await fetch(`${basePrefix}/api/logs`, { cache: "no-store" });
         const data = await res.json();
 
         if (data.error) {
