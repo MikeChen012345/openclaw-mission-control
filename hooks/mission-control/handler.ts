@@ -1,7 +1,7 @@
 /**
  * Mission Control Hook
  *
- * Syncs agent lifecycle events to Mission Control dashboard.
+ * Syncs agent lifecycle events to a local SQLite database.
  * Captures user prompts and agent responses.
  */
 
@@ -9,6 +9,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
+import Database from "better-sqlite3";
 
 type HookEvent = {
   type: string;
@@ -37,7 +38,8 @@ type OpenClawConfig = {
 };
 
 let listenerRegistered = false;
-let missionControlUrl: string | undefined;
+let db: Database.Database | null = null;
+let missionControlDbPath: string | undefined;
 
 // Track session info by sessionKey
 const sessionInfo = new Map<string, { agentId: string; sessionId: string }>();
@@ -48,26 +50,190 @@ const lastRealRunId = new Map<string, string>();
 // Track pending write tool calls by toolCallId
 const pendingWrites = new Map<string, { filePath: string; content: string; sessionKey: string }>();
 
-async function postToMissionControl(payload: Record<string, unknown>) {
-  if (!missionControlUrl) return;
+function resolveDbPath(cfg?: OpenClawConfig): string | undefined {
+  const hookConfig = cfg?.hooks?.internal?.entries?.["mission-control"];
+  return hookConfig?.env?.MISSION_CONTROL_DB_PATH || hookConfig?.env?.SQLITE_DB_PATH || process.env.MISSION_CONTROL_DB_PATH || process.env.SQLITE_DB_PATH;
+}
 
+// Backward-compatible alias: keep original function name/signature.
+// It now resolves a SQLite database path instead of an HTTP endpoint URL.
+export function resolveUrl(cfg?: OpenClawConfig): string | undefined {
+  return resolveDbPath(cfg);
+}
+
+function initializeDatabase(): Database.Database {
+  if (db) return db;
+
+  const defaultDbPath = "/root/.openclaw/mission-control/events.db";
+  const configuredDbPath = missionControlDbPath?.trim();
+  const dbPath = configuredDbPath ? path.resolve(configuredDbPath) : defaultDbPath;
+  const dbDir = path.dirname(dbPath);
+
+  // Ensure directory exists
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
+  db = new Database(dbPath);
+
+  // Enable foreign keys
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+
+  // Create tables if they don't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      runId TEXT NOT NULL,
+      sessionKey TEXT NOT NULL,
+      agentId TEXT,
+      status TEXT NOT NULL CHECK (status IN ('start', 'end', 'error')),
+      prompt TEXT,
+      response TEXT,
+      error TEXT,
+      source TEXT,
+      timestamp DATETIME NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      runId TEXT NOT NULL,
+      sessionKey TEXT NOT NULL,
+      eventType TEXT NOT NULL,
+      action TEXT NOT NULL,
+      message TEXT,
+      data JSON,
+      timestamp DATETIME NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (runId) REFERENCES tasks(runId)
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      runId TEXT NOT NULL,
+      sessionKey TEXT NOT NULL,
+      agentId TEXT,
+      title TEXT NOT NULL,
+      content TEXT,
+      type TEXT NOT NULL,
+      path TEXT,
+      eventType TEXT,
+      timestamp DATETIME NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (runId) REFERENCES tasks(runId)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_sessionKey ON tasks(sessionKey);
+    CREATE INDEX IF NOT EXISTS idx_tasks_runId ON tasks(runId);
+    CREATE INDEX IF NOT EXISTS idx_events_runId ON events(runId);
+    CREATE INDEX IF NOT EXISTS idx_documents_runId ON documents(runId);
+  `);
+
+  console.log("[mission-control] SQLite database initialized at:", dbPath);
+  return db;
+}
+
+async function saveToDatabase(payload: Record<string, unknown>) {
   try {
-    const response = await fetch(missionControlUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      console.error("[mission-control] POST failed:", response.status);
+    const database = initializeDatabase();
+    const {
+      runId,
+      action,
+      sessionKey,
+      timestamp,
+      prompt,
+      response,
+      error,
+      source,
+      message,
+      eventType,
+      agentId,
+      document,
+    } = payload as {
+      runId?: string;
+      action?: string;
+      sessionKey?: string;
+      timestamp?: string;
+      prompt?: string | null;
+      response?: string | null;
+      error?: string | null;
+      source?: string | null;
+      message?: string | null;
+      eventType?: string | null;
+      agentId?: string | null;
+      document?: {
+        title: string;
+        content: string;
+        type: string;
+        path?: string;
+      } | null;
+    };
+
+    // Track task lifecycle
+    if (action === "start" || action === "end" || action === "error") {
+      const stmt = database.prepare(`
+        INSERT INTO tasks (runId, sessionKey, agentId, status, prompt, response, error, source, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        runId,
+        sessionKey,
+        agentId || null,
+        action,
+        prompt || null,
+        response || null,
+        error || null,
+        source || null,
+        timestamp
+      );
+
+      console.log(`[mission-control] Task ${action} saved to DB for runId: ${runId}`);
+    }
+
+    // Track general events (progress, tool usage, etc.)
+    if (eventType && action === "progress") {
+      const stmt = database.prepare(`
+        INSERT INTO events (runId, sessionKey, eventType, action, message, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(runId, sessionKey, eventType, action, message || null, timestamp);
+
+      console.log(`[mission-control] Event saved: ${eventType}`);
+    }
+
+    // Track documents
+    if (action === "document" && document) {
+      const stmt = database.prepare(`
+        INSERT INTO documents (runId, sessionKey, agentId, title, content, type, path, eventType, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        runId,
+        sessionKey,
+        agentId || null,
+        document.title,
+        document.content,
+        document.type,
+        document.path || null,
+        eventType || null,
+        timestamp
+      );
+
+      console.log(`[mission-control] Document saved: ${document.title}`);
     }
   } catch (err) {
-    console.error("[mission-control] Failed:", err instanceof Error ? err.message : err);
+    console.error("[mission-control] Failed to save to database:", err instanceof Error ? err.message : err);
   }
 }
 
-function resolveUrl(cfg?: OpenClawConfig): string | undefined {
-  const hookConfig = cfg?.hooks?.internal?.entries?.["mission-control"];
-  return hookConfig?.env?.MISSION_CONTROL_URL || process.env.MISSION_CONTROL_URL;
+// Backward-compatible alias: keep original function name/signature.
+// It now stores the payload in SQLite instead of POSTing to a remote API.
+export async function postToMissionControl(payload: Record<string, unknown>) {
+  await saveToDatabase(payload);
 }
 
 /**
@@ -241,10 +407,9 @@ async function findAgentEventsModule(): Promise<{
 }
 
 const handler = async (event: HookEvent) => {
-  // Initialize URL from config
-  if (!missionControlUrl) {
+  if (!missionControlDbPath) {
     const cfg = event.context.cfg as OpenClawConfig | undefined;
-    missionControlUrl = resolveUrl(cfg);
+    missionControlDbPath = resolveUrl(cfg);
   }
 
   console.log(`[mission-control] Event: ${event.type}:${event.action} session=${event.sessionKey}`);
@@ -265,8 +430,10 @@ const handler = async (event: HookEvent) => {
   if (event.type === "gateway" && event.action === "startup") {
     if (listenerRegistered) return;
 
-    if (!missionControlUrl) {
-      console.log("[mission-control] No URL configured, skipping");
+    try {
+      initializeDatabase();
+    } catch (err) {
+      console.error("[mission-control] Failed to initialize database:", err);
       return;
     }
 
@@ -540,7 +707,11 @@ const handler = async (event: HookEvent) => {
 
       listenerRegistered = true;
       console.log("[mission-control] Registered event listener");
-      console.log("[mission-control] URL:", missionControlUrl);
+      if (missionControlDbPath) {
+        console.log("[mission-control] Using configured SQLite database path:", missionControlDbPath);
+      } else {
+        console.log("[mission-control] Using default SQLite database path");
+      }
     } catch (err) {
       console.error("[mission-control] Failed:", err instanceof Error ? err.message : err);
     }

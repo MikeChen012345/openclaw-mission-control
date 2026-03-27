@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mission Control Logs</title>
+  <style>
+    :root {
+      --bg-a: #0b1220;
+      --bg-b: #111a2d;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #dbe5f1;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 700px at 85% -10%, #1d4ed8 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 10%, #0891b2 0%, transparent 50%),
+        linear-gradient(140deg, var(--bg-a), var(--bg-b));
+      min-height: 100vh;
+    }
+
+    .shell {
+      width: min(1200px, calc(100% - 2rem));
+      margin: 1rem auto 2rem;
+      animation: fadein 420ms ease-out;
+    }
+
+    .header {
+      color: #f8fafc;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1rem 1.25rem;
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .title {
+      margin: 0;
+      letter-spacing: 0.02em;
+      font-size: clamp(1.1rem, 2vw, 1.7rem);
+      font-weight: 700;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+    }
+
+    .pill {
+      border: 1px solid rgba(203, 213, 225, 0.3);
+      border-radius: 999px;
+      padding: 0.2rem 0.6rem;
+      background: rgba(15, 23, 42, 0.35);
+      white-space: nowrap;
+    }
+
+    .grid {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    @media (min-width: 1000px) {
+      .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    .panel {
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 260px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-head {
+      padding: 0.8rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 0.96rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #334155;
+    }
+
+    .count {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: #0f172a;
+      border-radius: 10px;
+      background: #e2e8f0;
+      padding: 0.1rem 0.5rem;
+    }
+
+    .list {
+      display: grid;
+      gap: 0.7rem;
+      padding: 0.7rem;
+      max-height: 75vh;
+      overflow: auto;
+      align-content: start;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.65rem;
+      background: #fff;
+      display: grid;
+      gap: 0.5rem;
+      transform: translateY(8px);
+      animation: rise 260ms ease forwards;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 0.5rem;
+      align-items: start;
+    }
+
+    .k {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-weight: 700;
+      margin-top: 0.2rem;
+    }
+
+    .v {
+      color: #1e293b;
+      word-break: break-word;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 0.15rem 0.42rem;
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .ok { background: #dcfce7; color: #14532d; }
+    .warn { background: #fef9c3; color: #713f12; }
+    .err { background: #fee2e2; color: #7f1d1d; }
+    .neutral { background: #e2e8f0; color: #0f172a; }
+
+    details {
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 0.35rem 0.45rem;
+      background: #f8fafc;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    pre {
+      margin: 0.45rem 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.81rem;
+      color: #1e293b;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+
+    .empty {
+      color: #64748b;
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+      background: #f8fafc;
+    }
+
+    @keyframes rise {
+      to { transform: translateY(0); }
+    }
+
+    @keyframes fadein {
+      from { opacity: 0.01; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="header">
+      <h1 class="title">Mission Control Local Logs</h1>
+      <div class="meta">
+        <span class="pill" id="dbPath">DB: /root/.openclaw/mission-control/events.db</span>
+        <span class="pill" id="updatedAt">Updated: -</span>
+        <span class="pill">Auto refresh: 3s</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head"><h2>Tasks</h2><span class="count" id="tasksCount">0</span></div>
+        <div class="list" id="tasksList"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Events</h2><span class="count" id="eventsCount">0</span></div>
+        <div class="list" id="eventsList"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Documents</h2><span class="count" id="docsCount">0</span></div>
+        <div class="list" id="docsList"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const tasksList = document.getElementById("tasksList");
+    const eventsList = document.getElementById("eventsList");
+    const docsList = document.getElementById("docsList");
+
+    const tasksCount = document.getElementById("tasksCount");
+    const eventsCount = document.getElementById("eventsCount");
+    const docsCount = document.getElementById("docsCount");
+
+    const dbPath = document.getElementById("dbPath");
+    const updatedAt = document.getElementById("updatedAt");
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    const badgeClass = (status = "") => {
+      const s = String(status).toLowerCase();
+      if (["end", "ok", "success"].includes(s)) return "ok";
+      if (["start", "progress", "warning"].includes(s)) return "warn";
+      if (["error", "failed"].includes(s)) return "err";
+      return "neutral";
+    };
+
+    const row = (k, v) => `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${v}</div></div>`;
+
+    function renderTextBlock(value, label = "Details") {
+      if (value === null || value === undefined || value === "") return "";
+      const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      return `<details><summary>${escapeHtml(label)}</summary><pre>${escapeHtml(text)}</pre></details>`;
+    }
+
+    function renderTasks(items) {
+      tasksCount.textContent = String(items.length);
+      if (!items.length) {
+        tasksList.innerHTML = '<div class="empty">No task logs yet</div>';
+        return;
+      }
+
+      tasksList.innerHTML = items.map((item) => {
+        return `<article class="card">
+          ${row("Status", `<span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status || "unknown")}</span>`)}
+          ${row("Run", escapeHtml(item.runId || "-"))}
+          ${row("Session", escapeHtml(item.sessionKey || "-"))}
+          ${row("Agent", escapeHtml(item.agentId || "-"))}
+          ${row("Source", escapeHtml(item.source || "-"))}
+          ${row("At", escapeHtml(new Date(item.timestamp).toLocaleString()))}
+          ${renderTextBlock(item.prompt, "Prompt")}
+          ${renderTextBlock(item.response, "Response")}
+          ${renderTextBlock(item.error, "Error")}
+        </article>`;
+      }).join("");
+    }
+
+    function renderEvents(items) {
+      eventsCount.textContent = String(items.length);
+      if (!items.length) {
+        eventsList.innerHTML = '<div class="empty">No event logs yet</div>';
+        return;
+      }
+
+      eventsList.innerHTML = items.map((item) => {
+        let parsedData = item.data;
+        if (typeof parsedData === "string") {
+          try {
+            parsedData = JSON.parse(parsedData);
+          } catch {
+            parsedData = item.data;
+          }
+        }
+
+        return `<article class="card">
+          ${row("Type", `<span class="badge ${badgeClass(item.action)}">${escapeHtml(item.eventType || "event")}</span>`)}
+          ${row("Action", escapeHtml(item.action || "-"))}
+          ${row("Run", escapeHtml(item.runId || "-"))}
+          ${row("Session", escapeHtml(item.sessionKey || "-"))}
+          ${row("Message", escapeHtml(item.message || "-"))}
+          ${row("At", escapeHtml(new Date(item.timestamp).toLocaleString()))}
+          ${renderTextBlock(parsedData, "Event Data")}
+        </article>`;
+      }).join("");
+    }
+
+    function renderDocuments(items) {
+      docsCount.textContent = String(items.length);
+      if (!items.length) {
+        docsList.innerHTML = '<div class="empty">No document logs yet</div>';
+        return;
+      }
+
+      docsList.innerHTML = items.map((item) => {
+        return `<article class="card">
+          ${row("Title", escapeHtml(item.title || "-"))}
+          ${row("Type", `<span class="badge neutral">${escapeHtml(item.type || "unknown")}</span>`)}
+          ${row("Path", escapeHtml(item.path || "-"))}
+          ${row("Run", escapeHtml(item.runId || "-"))}
+          ${row("Session", escapeHtml(item.sessionKey || "-"))}
+          ${row("At", escapeHtml(new Date(item.timestamp).toLocaleString()))}
+          ${renderTextBlock(item.content, "Content")}
+        </article>`;
+      }).join("");
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch("/api/logs", { cache: "no-store" });
+        const data = await res.json();
+
+        if (data.error) {
+          tasksList.innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
+          eventsList.innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
+          docsList.innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+
+        dbPath.textContent = `DB: ${data.dbPath}`;
+        updatedAt.textContent = `Updated: ${new Date(data.generatedAt).toLocaleString()}`;
+
+        renderTasks(Array.isArray(data.tasks) ? data.tasks : []);
+        renderEvents(Array.isArray(data.events) ? data.events : []);
+        renderDocuments(Array.isArray(data.documents) ? data.documents : []);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        tasksList.innerHTML = `<div class="empty">Failed to fetch logs: ${escapeHtml(msg)}</div>`;
+        eventsList.innerHTML = `<div class="empty">Failed to fetch logs: ${escapeHtml(msg)}</div>`;
+        docsList.innerHTML = `<div class="empty">Failed to fetch logs: ${escapeHtml(msg)}</div>`;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>
