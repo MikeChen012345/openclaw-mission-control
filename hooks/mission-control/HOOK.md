@@ -15,13 +15,13 @@ metadata:
 
 # Mission Control Integration
 
-Sends agent lifecycle events to the Mission Control Convex backend for real-time task tracking.
+Stores agent lifecycle events in a local SQLite database for real-time task tracking.
 
 ## How It Works
 
 1. On `gateway:startup`, registers a persistent listener via `onAgentEvent()`
 2. The listener watches for lifecycle events (`stream: "lifecycle"`)
-3. On `phase: "start"` or `phase: "end"`, POSTs to Mission Control
+3. On `phase: "start"` or `phase: "end"`, writes logs to SQLite
 
 ## Configuration
 
@@ -36,7 +36,7 @@ Add to `~/.openclaw/openclaw.json`:
         "mission-control": {
           "enabled": true,
           "env": {
-            "MISSION_CONTROL_URL": "http://127.0.0.1:3211/openclaw/event"
+            "MISSION_CONTROL_DB_PATH": "/root/.openclaw/mission-control/events.db"
           }
         }
       }
@@ -45,12 +45,12 @@ Add to `~/.openclaw/openclaw.json`:
 }
 ```
 
-For production (Convex cloud), use:
+Alternatively, use:
 ```json
-"MISSION_CONTROL_URL": "https://your-project.convex.site/openclaw/event"
+"SQLITE_DB_PATH": "/root/.openclaw/mission-control/events.db"
 ```
 
-Alternatively, set the `MISSION_CONTROL_URL` environment variable (hook config takes priority).
+You can also set `MISSION_CONTROL_DB_PATH` or `SQLITE_DB_PATH` as environment variables (hook config takes priority).
 
 ## What It Does
 
