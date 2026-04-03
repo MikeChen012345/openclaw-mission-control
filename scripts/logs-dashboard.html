@@ -290,13 +290,41 @@
       }
       const title = event.message || event.action || event.eventType || "Event";
       const displayTitle = event.title || title;
+      let detailsBlock = "";
+      if (parsedData && typeof parsedData === "object" && !Array.isArray(parsedData)) {
+        const obj = parsedData;
+        const toolName = obj.toolName;
+        const phase = obj.phase;
+        const toolCallId = obj.toolCallId;
+        const isError = obj.isError;
+        const args = obj.args;
+        const result = obj.result;
+
+        const knownKeys = new Set(["toolName", "phase", "toolCallId", "isError", "args", "result"]);
+        const rest = Object.fromEntries(Object.entries(obj).filter(([k]) => !knownKeys.has(k)));
+
+        const detailsPayload = {
+          toolName: toolName ?? undefined,
+          phase: phase ?? undefined,
+          toolCallId: toolCallId ?? undefined,
+          status: isError ? "error" : undefined,
+          args: args ?? undefined,
+          result: result ?? undefined,
+          extra: Object.keys(rest).length > 0 ? rest : undefined,
+        };
+
+        detailsBlock = renderTextBlock(detailsPayload, "Details", `${baseKey}:details`);
+      } else {
+        detailsBlock = renderTextBlock(parsedData, "Details", `${baseKey}:details`);
+      }
+
       return `<div class="nested-item">
         <div class="nested-header">
           <span class="badge ${badgeClass(event.action)}" style="font-size: 0.75rem;">${escapeHtml(event.eventType || "event")}</span>
           <span style="margin-left: 0.5rem; font-size: 0.9rem; color: #1e293b;">${escapeHtml(displayTitle)}</span>
         </div>
         ${event.description ? `<div style="margin-top: 0.3rem; font-size: 0.85rem; color: #64748b;">📝 ${escapeHtml(event.description)}</div>` : ""}
-        ${renderTextBlock(parsedData, "Details", `${baseKey}:data`)}
+        ${detailsBlock}
       </div>`;
     }
 
@@ -381,7 +409,7 @@
               ${row("At", escapeHtml(new Date(item.timestamp).toLocaleString()))}
               ${renderTextBlock(item.prompt, "Prompt", `${baseKey}:prompt`)}
               ${renderTextBlock(item.response, "Response", `${baseKey}:response`)}
-              ${renderTextBlock(item.error, "Error", `${baseKey}:error`)}
+              ${item.error ? renderTextBlock(item.error, "Error", `${baseKey}:error`) : ""}
             </div>
           </details>
           ${nestedSections}

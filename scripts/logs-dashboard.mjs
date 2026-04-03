@@ -43,7 +43,20 @@ function safeQuery(sql) {
 
 function readLogs() {
   const tasks = safeQuery(
-    `SELECT t.id, t.runId, t.sessionKey, t.agentId, t.status, t.title, t.description, t.prompt, t.response, t.error, t.source, t.timestamp, t.createdAt
+    `SELECT t.id, t.runId, t.sessionKey, t.agentId, t.status, t.title, t.description,
+            COALESCE(
+              t.prompt,
+              (
+                SELECT ts.prompt
+                FROM tasks ts
+                WHERE ts.runId = t.runId
+                  AND ts.status = 'start'
+                  AND ts.prompt IS NOT NULL
+                ORDER BY ts.id DESC
+                LIMIT 1
+              )
+            ) AS prompt,
+            t.response, t.error, t.source, t.timestamp, t.createdAt
      FROM tasks t
      INNER JOIN (
        SELECT runId, MAX(id) AS latestId
