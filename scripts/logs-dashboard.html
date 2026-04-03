@@ -291,6 +291,7 @@
       const title = event.message || event.action || event.eventType || "Event";
       const displayTitle = event.title || title;
       let detailsBlock = "";
+      console.log(`[renderEventRow] Event ${event.id}:`, { eventType: event.eventType, parsedDataType: typeof parsedData, isObject: typeof parsedData === "object" && !Array.isArray(parsedData) });
       if (parsedData && typeof parsedData === "object" && !Array.isArray(parsedData)) {
         const obj = parsedData;
         const toolName = obj.toolName;
@@ -299,6 +300,7 @@
         const isError = obj.isError;
         const args = obj.args;
         const result = obj.result;
+        console.log(`[renderEventRow] Extracted structured fields:`, { toolName, phase, toolCallId, isError });
 
         const knownKeys = new Set(["toolName", "phase", "toolCallId", "isError", "args", "result"]);
         const rest = Object.fromEntries(Object.entries(obj).filter(([k]) => !knownKeys.has(k)));
@@ -312,9 +314,11 @@
           result: result ?? undefined,
           extra: Object.keys(rest).length > 0 ? rest : undefined,
         };
+        console.log(`[renderEventRow] Final payload:`, JSON.stringify(detailsPayload));
 
         detailsBlock = renderTextBlock(detailsPayload, "Details", `${baseKey}:details`);
       } else {
+        console.log(`[renderEventRow] Fallback: rendering as raw JSON (parsed data is ${typeof parsedData})`);
         detailsBlock = renderTextBlock(parsedData, "Details", `${baseKey}:details`);
       }
 

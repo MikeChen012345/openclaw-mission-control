@@ -317,7 +317,7 @@ export async function postToMissionControl(payload: Record<string, unknown>) {
 /**
  * Extract the last user message from a session file (JSONL format)
  */
-async function getLastUserMessage(sessionFilePath: string): Promise<string | null> {
+async function getLastUserMessage(sessionFilePath: string, retries: number = 5): Promise<string | null> {
   try {
     const content = await fsp.readFile(sessionFilePath, "utf-8");
     const lines = content.trim().split("\n");
@@ -344,6 +344,13 @@ async function getLastUserMessage(sessionFilePath: string): Promise<string | nul
       }
     }
   } catch (err) {
+    if (retries > 0 && (err instanceof Error && err.message.includes("ENOENT"))) {
+      // File doesn't exist yet, retry with exponential backoff
+      const delayMs = Math.pow(2, 5 - retries) * 100; // 1600ms, 800ms, 400ms, 200ms, 100ms
+      console.log(`[mission-control] Session file not ready, retrying in ${delayMs}ms (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return getLastUserMessage(sessionFilePath, retries - 1);
+    }
     console.error("[mission-control] Failed to read session file:", err);
   }
   return null;
@@ -579,7 +586,7 @@ const handler = async (event: HookEvent) => {
 
             if (info) {
               const sessionFile = getSessionFilePath(info.agentId, info.sessionId);
-              await new Promise(resolve => setTimeout(resolve, 100));
+              console.log("[mission-control] Attempting to read session file:", sessionFile);
               rawPrompt = await getLastUserMessage(sessionFile);
               if (rawPrompt) {
                 const extracted = extractCleanPrompt(rawPrompt);
@@ -588,7 +595,11 @@ const handler = async (event: HookEvent) => {
                 console.log("[mission-control] Raw prompt:", rawPrompt.slice(0, 100));
                 console.log("[mission-control] Clean prompt:", prompt.slice(0, 100));
                 console.log("[mission-control] Source:", source);
+              } else {
+                console.log("[mission-control] WARNING: No user message found in session file or file doesn't exist");
               }
+            } else {
+              console.log("[mission-control] WARNING: No session info found for sessionKey:", sessionKey, "- skipping prompt extraction");
             }
 
             // Determine if this is a real user run or a system follow-up
