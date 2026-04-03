@@ -317,7 +317,7 @@ export async function postToMissionControl(payload: Record<string, unknown>) {
 /**
  * Extract the last user message from a session file (JSONL format)
  */
-async function getLastUserMessage(sessionFilePath: string, retries: number = 5): Promise<string | null> {
+async function getLastUserMessage(sessionFilePath: string, retries: number = 10): Promise<string | null> {
   try {
     const content = await fsp.readFile(sessionFilePath, "utf-8");
     const lines = content.trim().split("\n");

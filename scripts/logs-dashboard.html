@@ -291,34 +291,80 @@
       const title = event.message || event.action || event.eventType || "Event";
       const displayTitle = event.title || title;
       let detailsBlock = "";
-      console.log(`[renderEventRow] Event ${event.id}:`, { eventType: event.eventType, parsedDataType: typeof parsedData, isObject: typeof parsedData === "object" && !Array.isArray(parsedData) });
-      if (parsedData && typeof parsedData === "object" && !Array.isArray(parsedData)) {
-        const obj = parsedData;
-        const toolName = obj.toolName;
-        const phase = obj.phase;
-        const toolCallId = obj.toolCallId;
-        const isError = obj.isError;
-        const args = obj.args;
-        const result = obj.result;
-        console.log(`[renderEventRow] Extracted structured fields:`, { toolName, phase, toolCallId, isError });
+
+      const renderStructuredValue = (value, valueKey) => {
+        if (value === null || value === undefined || value === "") return "-";
+
+        if (typeof value === "string") {
+          if (value.includes("\n") || value.length > 180) {
+            return `<pre style="margin: 0;">${escapeHtml(value)}</pre>`;
+          }
+          return escapeHtml(value);
+        }
+
+        if (typeof value === "number" || typeof value === "boolean") {
+          return escapeHtml(String(value));
+        }
+
+        if (Array.isArray(value)) {
+          if (!value.length) return "[]";
+          const arrayRows = value
+            .map((item, index) => row(`[${index}]`, renderStructuredValue(item, `${valueKey}:${index}`)))
+            .join("");
+          return `<details data-detail-key="${escapeHtml(`${valueKey}:array`)}"><summary>Array (${value.length})</summary><div style="margin-top: 0.45rem; display: grid; gap: 0.35rem;">${arrayRows}</div></details>`;
+        }
+
+        if (typeof value === "object") {
+          const entries = Object.entries(value);
+          if (!entries.length) return "{}";
+          const objectRows = entries
+            .map(([key, nestedValue]) => row(key, renderStructuredValue(nestedValue, `${valueKey}:${key}`)))
+            .join("");
+          return `<details data-detail-key="${escapeHtml(`${valueKey}:object`)}"><summary>Object (${entries.length})</summary><div style="margin-top: 0.45rem; display: grid; gap: 0.35rem;">${objectRows}</div></details>`;
+        }
+
+        return escapeHtml(String(value));
+      };
+
+      const renderObjectRows = (obj, baseRowKey) => {
+        const rows = [];
+        const addRow = (label, value) => {
+          if (value === null || value === undefined || value === "") return;
+          rows.push(row(label, renderStructuredValue(value, `${baseRowKey}:${label.toLowerCase().replace(/\s+/g, "-")}`)));
+        };
+
+        addRow("Tool", obj.toolName);
+        addRow("Phase", obj.phase);
+        addRow("Call ID", obj.toolCallId);
+
+        if (typeof obj.isError === "boolean") {
+          rows.push(
+            row(
+              "Status",
+              `<span class="badge ${obj.isError ? "err" : "ok"}">${obj.isError ? "error" : "ok"}</span>`
+            )
+          );
+        }
+
+        addRow("Args", obj.args);
+        addRow("Result", obj.result);
 
         const knownKeys = new Set(["toolName", "phase", "toolCallId", "isError", "args", "result"]);
-        const rest = Object.fromEntries(Object.entries(obj).filter(([k]) => !knownKeys.has(k)));
+        for (const [k, v] of Object.entries(obj)) {
+          if (knownKeys.has(k)) continue;
+          addRow(`Extra: ${k}`, v);
+        }
 
-        const detailsPayload = {
-          toolName: toolName ?? undefined,
-          phase: phase ?? undefined,
-          toolCallId: toolCallId ?? undefined,
-          status: isError ? "error" : undefined,
-          args: args ?? undefined,
-          result: result ?? undefined,
-          extra: Object.keys(rest).length > 0 ? rest : undefined,
-        };
-        console.log(`[renderEventRow] Final payload:`, JSON.stringify(detailsPayload));
+        if (!rows.length) {
+          return renderTextBlock(obj, "Details", `${baseRowKey}:details`);
+        }
 
-        detailsBlock = renderTextBlock(detailsPayload, "Details", `${baseKey}:details`);
+        return `<div style="margin-top: 0.45rem; display: grid; gap: 0.35rem;">${rows.join("")}</div>`;
+      };
+
+      if (parsedData && typeof parsedData === "object" && !Array.isArray(parsedData)) {
+        detailsBlock = renderObjectRows(parsedData, baseKey);
       } else {
-        console.log(`[renderEventRow] Fallback: rendering as raw JSON (parsed data is ${typeof parsedData})`);
         detailsBlock = renderTextBlock(parsedData, "Details", `${baseKey}:details`);
       }
 
