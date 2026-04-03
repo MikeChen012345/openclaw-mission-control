@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
+import { registerMissionControlApi } from "./api/mission-control";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,6 +13,8 @@ export default defineConfig({
 		{
 			name: "local-file-server",
 			configureServer(server) {
+				registerMissionControlApi(server); // haven't tested yet
+
 				server.middlewares.use("/api/local-file", (req, res) => {
 					const url = new URL(req.url || "", "http://localhost");
 					const filePath = url.searchParams.get("path");
