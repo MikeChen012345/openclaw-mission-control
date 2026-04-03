@@ -144,11 +144,13 @@ function buildTaskFilters(options: LogsQueryOptions) {
       COALESCE(t.runId, '') LIKE @q OR
       COALESCE(t.sessionKey, '') LIKE @q OR
       COALESCE(t.agentId, '') LIKE @q OR
+      COALESCE(t.status, '') LIKE @q OR
       COALESCE(t.title, '') LIKE @q OR
       COALESCE(t.description, '') LIKE @q OR
       COALESCE(t.prompt, '') LIKE @q OR
       COALESCE(t.response, '') LIKE @q OR
-      COALESCE(t.error, '') LIKE @q
+      COALESCE(t.error, '') LIKE @q OR
+      COALESCE(t.source, '') LIKE @q
     )`);
     bindings.q = `%${options.q}%`;
   }
