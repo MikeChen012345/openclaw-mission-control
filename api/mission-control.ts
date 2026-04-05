@@ -1,3 +1,5 @@
+/// <reference path="../better-sqlite3.d.ts" />
+
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
@@ -8,6 +10,7 @@ interface TaskRow {
   id: number;
   runId: string;
   sessionKey: string;
+  sessionId: string | null;
   agentId: string;
   status: string;
   title: string | null;
@@ -24,6 +27,7 @@ interface EventRow {
   id: number;
   runId: string;
   sessionKey: string;
+  sessionId: string | null;
   eventType: string;
   action: string;
   title: string | null;
@@ -38,6 +42,7 @@ interface DocumentRow {
   id: number;
   runId: string;
   sessionKey: string;
+  sessionId: string | null;
   agentId: string;
   title: string | null;
   description: string | null;
@@ -76,7 +81,7 @@ function resolveDbPath() {
 }
 
 const dbPath = resolveDbPath();
-let db: Database.Database | null = null;
+let db: any | null = null;
 
 function openDb() {
   if (db) return db;
@@ -221,6 +226,7 @@ function readLogs(options: LogsQueryOptions) {
 
   const tasks = safeQuery<TaskRow>(
     `SELECT t.id, t.runId, t.sessionKey, t.agentId, t.status, t.title, t.description,
+          t.sessionId,
             COALESCE(
               t.prompt,
               (
@@ -277,7 +283,7 @@ function readLogs(options: LogsQueryOptions) {
     }
 
     const events = safeQuery<EventRow>(
-      `SELECT id, runId, sessionKey, eventType, action, title, description, message, data, timestamp, createdAt
+      `SELECT id, runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp, createdAt
        FROM events
        WHERE ${eventFilterClauses.join(" AND ")}
        ORDER BY id DESC
@@ -293,7 +299,7 @@ function readLogs(options: LogsQueryOptions) {
   if (runIds.length && options.includeDocuments) {
     const runIdBindings = appendRunIdBindings({}, runIds, "docRunId");
     const documents = safeQuery<DocumentRow>(
-      `SELECT id, runId, sessionKey, agentId, title, description, content, type, path, eventType, timestamp, createdAt
+      `SELECT id, runId, sessionKey, sessionId, agentId, title, description, content, type, path, eventType, timestamp, createdAt
        FROM documents
        WHERE runId IN (${runIdBindings.inClause})
        ORDER BY id DESC

@@ -92,6 +92,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       runId TEXT NOT NULL,
       sessionKey TEXT NOT NULL,
+      sessionId TEXT,
       agentId TEXT,
       status TEXT NOT NULL CHECK (status IN ('start', 'end', 'error')),
       title TEXT,
@@ -108,6 +109,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       runId TEXT NOT NULL,
       sessionKey TEXT NOT NULL,
+      sessionId TEXT,
       eventType TEXT NOT NULL,
       action TEXT NOT NULL,
       title TEXT,
@@ -122,6 +124,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       runId TEXT NOT NULL,
       sessionKey TEXT NOT NULL,
+      sessionId TEXT,
       agentId TEXT,
       title TEXT NOT NULL,
       description TEXT,
@@ -134,10 +137,25 @@ function initializeDatabase(): InstanceType<typeof Database> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_tasks_sessionKey ON tasks(sessionKey);
+    CREATE INDEX IF NOT EXISTS idx_tasks_sessionId ON tasks(sessionId);
     CREATE INDEX IF NOT EXISTS idx_tasks_runId ON tasks(runId);
     CREATE INDEX IF NOT EXISTS idx_events_runId ON events(runId);
+    CREATE INDEX IF NOT EXISTS idx_events_sessionId ON events(sessionId);
     CREATE INDEX IF NOT EXISTS idx_documents_runId ON documents(runId);
+    CREATE INDEX IF NOT EXISTS idx_documents_sessionId ON documents(sessionId);
   `);
+
+  const ensureColumnExists = (tableName: "tasks" | "events" | "documents", columnName: string, columnDefinition: string) => {
+    const columns = db!.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: string }>;
+    const hasColumn = columns.some(column => column.name === columnName);
+    if (!hasColumn) {
+      db!.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition};`);
+    }
+  };
+
+  ensureColumnExists("tasks", "sessionId", "sessionId TEXT");
+  ensureColumnExists("events", "sessionId", "sessionId TEXT");
+  ensureColumnExists("documents", "sessionId", "sessionId TEXT");
 
   // Repair old schemas that used invalid foreign keys on runId.
   // In SQLite, a foreign key target must be PRIMARY KEY or UNIQUE, which tasks.runId is not.
@@ -160,6 +178,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       runId TEXT NOT NULL,
       sessionKey TEXT NOT NULL,
+      sessionId TEXT,
       eventType TEXT NOT NULL,
       action TEXT NOT NULL,
       title TEXT,
@@ -169,8 +188,8 @@ function initializeDatabase(): InstanceType<typeof Database> {
       timestamp DATETIME NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );`,
-    `INSERT INTO events (id, runId, sessionKey, eventType, action, message, data, timestamp, createdAt)
-     SELECT id, runId, sessionKey, eventType, action, message, data, timestamp, createdAt FROM events_old;`
+    `INSERT INTO events (id, runId, sessionKey, sessionId, eventType, action, message, data, timestamp, createdAt)
+     SELECT id, runId, sessionKey, sessionId, eventType, action, message, data, timestamp, createdAt FROM events_old;`
   );
 
   repairTableIfNeeded(
@@ -179,6 +198,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       runId TEXT NOT NULL,
       sessionKey TEXT NOT NULL,
+      sessionId TEXT,
       agentId TEXT,
       title TEXT NOT NULL,
       description TEXT,
@@ -189,13 +209,15 @@ function initializeDatabase(): InstanceType<typeof Database> {
       timestamp DATETIME NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );`,
-    `INSERT INTO documents (id, runId, sessionKey, agentId, title, content, type, path, eventType, timestamp, createdAt)
-     SELECT id, runId, sessionKey, agentId, title, content, type, path, eventType, timestamp, createdAt FROM documents_old;`
+    `INSERT INTO documents (id, runId, sessionKey, sessionId, agentId, title, content, type, path, eventType, timestamp, createdAt)
+     SELECT id, runId, sessionKey, sessionId, agentId, title, content, type, path, eventType, timestamp, createdAt FROM documents_old;`
   );
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_events_runId ON events(runId);
+    CREATE INDEX IF NOT EXISTS idx_events_sessionId ON events(sessionId);
     CREATE INDEX IF NOT EXISTS idx_documents_runId ON documents(runId);
+    CREATE INDEX IF NOT EXISTS idx_documents_sessionId ON documents(sessionId);
   `);
 
   console.log("[mission-control] SQLite database initialized at:", dbPath);
@@ -209,6 +231,7 @@ async function saveToDatabase(payload: Record<string, unknown>) {
       runId,
       action,
       sessionKey,
+      sessionId,
       timestamp,
       title,
       description,
@@ -225,6 +248,7 @@ async function saveToDatabase(payload: Record<string, unknown>) {
       runId?: string;
       action?: string;
       sessionKey?: string;
+      sessionId?: string | null;
       timestamp?: string;
       title?: string | null;
       description?: string | null;
@@ -248,13 +272,14 @@ async function saveToDatabase(payload: Record<string, unknown>) {
     // Track task lifecycle
     if (action === "start" || action === "end" || action === "error") {
       const stmt = database.prepare(`
-        INSERT INTO tasks (runId, sessionKey, agentId, status, title, description, prompt, response, error, source, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (runId, sessionKey, sessionId, agentId, status, title, description, prompt, response, error, source, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
         runId,
         sessionKey,
+        sessionId || null,
         agentId || null,
         action,
         title || null,
@@ -272,11 +297,11 @@ async function saveToDatabase(payload: Record<string, unknown>) {
     // Track general events (progress, tool usage, etc.)
     if (eventType && action === "progress") {
       const stmt = database.prepare(`
-        INSERT INTO events (runId, sessionKey, eventType, action, title, description, message, data, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(runId, sessionKey, eventType, action, title || null, description || null, message || null, data ? JSON.stringify(data) : null, timestamp);
+      stmt.run(runId, sessionKey, sessionId || null, eventType, action, title || null, description || null, message || null, data ? JSON.stringify(data) : null, timestamp);
 
       console.log(`[mission-control] Event saved: ${eventType}`);
     }
@@ -284,13 +309,14 @@ async function saveToDatabase(payload: Record<string, unknown>) {
     // Track documents
     if (action === "document" && document) {
       const stmt = database.prepare(`
-        INSERT INTO documents (runId, sessionKey, agentId, title, description, content, type, path, eventType, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO documents (runId, sessionKey, sessionId, agentId, title, description, content, type, path, eventType, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
         runId,
         sessionKey,
+        sessionId || null,
         agentId || null,
         document.title,
         document.description || null,
@@ -526,6 +552,7 @@ const handler = async (event: HookEvent) => {
     const runId = `hook-${event.sessionKey}-${Date.now()}`;
     commandRunIdBySession.set(event.sessionKey, runId);
     lastRealRunId.set(event.sessionKey, runId);
+    const sessionId = event.context.sessionId as string | undefined;
 
     const prompt = event.messages.length > 0 ? event.messages.join("\n") : null;
 
@@ -533,6 +560,7 @@ const handler = async (event: HookEvent) => {
       runId,
       action: "start",
       sessionKey: event.sessionKey,
+      sessionId,
       timestamp: event.timestamp.toISOString(),
       prompt,
       source: "hook:command:new",
@@ -564,6 +592,7 @@ const handler = async (event: HookEvent) => {
       agentEvents.onAgentEvent(async (evt: AgentEventPayload) => {
         const sessionKey = evt.sessionKey;
         if (!sessionKey) return;
+        const sessionId = sessionInfo.get(sessionKey)?.sessionId;
 
         // Lifecycle events
         if (evt.stream === "lifecycle") {
@@ -583,7 +612,6 @@ const handler = async (event: HookEvent) => {
             let prompt: string | null = null;
             let source: string | null = null;
             let rawPrompt: string | null = null;
-
             if (info) {
               const sessionFile = getSessionFilePath(info.agentId, info.sessionId);
               console.log("[mission-control] Attempting to read session file:", sessionFile);
@@ -628,6 +656,7 @@ const handler = async (event: HookEvent) => {
               runId: evt.runId,
               action: "start",
               sessionKey,
+              sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               prompt,
               source,
@@ -655,6 +684,7 @@ const handler = async (event: HookEvent) => {
               runId: endRunId,
               action: "end",
               sessionKey,
+              sessionId: info?.sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               response,
               eventType: "lifecycle:end",
@@ -666,6 +696,7 @@ const handler = async (event: HookEvent) => {
               runId: errorRunId,
               action: "error",
               sessionKey,
+              sessionId: info?.sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               error: evt.data?.error as string | undefined,
               eventType: "lifecycle:error",
@@ -693,6 +724,7 @@ const handler = async (event: HookEvent) => {
               runId: effectiveRunId,
               action: "progress",
               sessionKey,
+              sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               message: `🔧 Using tool: ${toolName}`,
               eventType: "tool:start",
@@ -726,6 +758,7 @@ const handler = async (event: HookEvent) => {
               runId: effectiveRunId,
               action: "progress",
               sessionKey,
+              sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               message: `${isError ? "❌" : "✅"} Tool result: ${toolName}`,
               eventType: "tool:result",
@@ -767,6 +800,7 @@ const handler = async (event: HookEvent) => {
                 runId: effectiveRunId,
                 action: "document",
                 sessionKey: pending.sessionKey,
+                sessionId,
                 timestamp: new Date(evt.ts).toISOString(),
                 agentId: info?.agentId,
                 document: {
@@ -821,6 +855,7 @@ const handler = async (event: HookEvent) => {
                   runId: effectiveRunId,
                   action: "document",
                   sessionKey,
+                  sessionId,
                   timestamp: new Date(evt.ts).toISOString(),
                   agentId: info?.agentId,
                   document: {
@@ -851,6 +886,7 @@ const handler = async (event: HookEvent) => {
               runId: evt.runId,
               action: "progress",
               sessionKey,
+              sessionId,
               timestamp: new Date(evt.ts).toISOString(),
               message: "💭 Thinking...",
               eventType: "assistant:thinking",
