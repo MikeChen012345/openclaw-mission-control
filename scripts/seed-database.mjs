@@ -28,6 +28,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     runId TEXT NOT NULL,
     sessionKey TEXT NOT NULL,
+    sessionId TEXT,
     agentId TEXT,
     status TEXT NOT NULL CHECK (status IN ('start', 'end', 'error')),
     title TEXT,
@@ -44,6 +45,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     runId TEXT NOT NULL,
     sessionKey TEXT NOT NULL,
+    sessionId TEXT,
     eventType TEXT NOT NULL,
     action TEXT NOT NULL,
     title TEXT,
@@ -58,6 +60,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     runId TEXT NOT NULL,
     sessionKey TEXT NOT NULL,
+    sessionId TEXT,
     agentId TEXT,
     title TEXT NOT NULL,
     description TEXT,
@@ -70,10 +73,26 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_tasks_sessionKey ON tasks(sessionKey);
+  CREATE INDEX IF NOT EXISTS idx_tasks_sessionId ON tasks(sessionId);
   CREATE INDEX IF NOT EXISTS idx_tasks_runId ON tasks(runId);
   CREATE INDEX IF NOT EXISTS idx_events_runId ON events(runId);
+  CREATE INDEX IF NOT EXISTS idx_events_sessionId ON events(sessionId);
   CREATE INDEX IF NOT EXISTS idx_documents_runId ON documents(runId);
+  CREATE INDEX IF NOT EXISTS idx_documents_sessionId ON documents(sessionId);
 `);
+
+// Ensure sessionId exists for older databases
+function ensureColumnExists(tableName, columnName, columnDefinition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const hasColumn = columns.some((column) => column.name === columnName);
+  if (!hasColumn) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition};`);
+  }
+}
+
+ensureColumnExists("tasks", "sessionId", "sessionId TEXT");
+ensureColumnExists("events", "sessionId", "sessionId TEXT");
+ensureColumnExists("documents", "sessionId", "sessionId TEXT");
 
 // Sample test data
 const now = new Date().toISOString();
@@ -82,6 +101,7 @@ const sampleTasks = [
   {
     runId: "run-2024-12-15-001",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     agentId: "agent-research",
     status: "end",
     title: "Research Market Analysis",
@@ -94,6 +114,7 @@ const sampleTasks = [
   {
     runId: "run-2024-12-15-002",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     agentId: "agent-planning",
     status: "end",
     title: "Create Strategic Roadmap",
@@ -106,6 +127,7 @@ const sampleTasks = [
   {
     runId: "run-2024-12-15-003",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     agentId: "agent-code-review",
     status: "error",
     title: "Code Quality Assessment Failed",
@@ -118,6 +140,7 @@ const sampleTasks = [
   {
     runId: "run-2024-12-15-004",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     agentId: "agent-testing",
     status: "end",
     title: "Test Coverage Analysis",
@@ -130,6 +153,7 @@ const sampleTasks = [
   {
     runId: "run-2024-12-15-005",
     sessionKey: "session-003",
+    sessionId: "sess-003",
     agentId: "agent-security",
     status: "start",
     title: null,
@@ -145,6 +169,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-001",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     eventType: "tool:start",
     action: "search",
     title: "Starting Market Search",
@@ -156,6 +181,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-001",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     eventType: "tool:result",
     action: "search",
     title: "Market Search Complete",
@@ -167,6 +193,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-001",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     eventType: "agent:progress",
     action: "analyzing",
     title: "Synthesizing Insights",
@@ -178,6 +205,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-002",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     eventType: "tool:start",
     action: "document",
     title: "Creating Roadmap Document",
@@ -189,6 +217,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-003",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     eventType: "tool:start",
     action: "analyze",
     title: "Starting Code Analysis",
@@ -200,6 +229,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-003",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     eventType: "agent:error",
     action: "timeout",
     title: "Analysis Timeout",
@@ -211,6 +241,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-004",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     eventType: "tool:start",
     action: "test_analyze",
     title: "Analyzing Test Coverage",
@@ -222,6 +253,7 @@ const sampleEvents = [
   {
     runId: "run-2024-12-15-004",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     eventType: "tool:result",
     action: "test_analyze",
     title: "Coverage Report Ready",
@@ -236,6 +268,7 @@ const sampleDocuments = [
   {
     runId: "run-2024-12-15-001",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     agentId: "agent-research",
     title: "Market Analysis Report Q4 2024",
     description: "Comprehensive market analysis covering cloud computing trends and enterprise adoption metrics",
@@ -248,6 +281,7 @@ const sampleDocuments = [
   {
     runId: "run-2024-12-15-002",
     sessionKey: "session-001",
+    sessionId: "sess-001",
     agentId: "agent-planning",
     title: "12-Month Strategic Roadmap",
     description: "Detailed technology roadmap with phases, timelines, and resource allocation",
@@ -260,6 +294,7 @@ const sampleDocuments = [
   {
     runId: "run-2024-12-15-004",
     sessionKey: "session-002",
+    sessionId: "sess-002",
     agentId: "agent-testing",
     title: "Test Coverage Gap Analysis",
     description: "Detailed analysis of test coverage gaps and recommendations for improvement",
@@ -275,14 +310,15 @@ try {
   // Insert tasks
   console.log("\n📝 Inserting sample tasks...");
   const insertTask = db.prepare(`
-    INSERT INTO tasks (runId, sessionKey, agentId, status, title, description, prompt, response, error, source, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (runId, sessionKey, sessionId, agentId, status, title, description, prompt, response, error, source, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   sampleTasks.forEach((task) => {
     insertTask.run(
       task.runId,
       task.sessionKey,
+      task.sessionId || null,
       task.agentId || null,
       task.status,
       task.title || null,
@@ -299,14 +335,15 @@ try {
   // Insert events
   console.log("\n📋 Inserting sample events...");
   const insertEvent = db.prepare(`
-    INSERT INTO events (runId, sessionKey, eventType, action, title, description, message, data, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   sampleEvents.forEach((event) => {
     insertEvent.run(
       event.runId,
       event.sessionKey,
+      event.sessionId || null,
       event.eventType,
       event.action,
       event.title || null,
@@ -321,14 +358,15 @@ try {
   // Insert documents
   console.log("\n📄 Inserting sample documents...");
   const insertDoc = db.prepare(`
-    INSERT INTO documents (runId, sessionKey, agentId, title, description, content, type, path, eventType, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO documents (runId, sessionKey, sessionId, agentId, title, description, content, type, path, eventType, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   sampleDocuments.forEach((doc) => {
     insertDoc.run(
       doc.runId,
       doc.sessionKey,
+      doc.sessionId || null,
       doc.agentId || null,
       doc.title,
       doc.description || null,
