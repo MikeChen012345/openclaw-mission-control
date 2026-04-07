@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 import { registerMissionControlApi } from "./api/mission-control";
+import { registerCronApi } from "./api/cron-api-endpoints";
+import { registerSubagentApi } from "./api/subagent-api-endpoints";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -14,6 +16,8 @@ export default defineConfig({
 			name: "local-file-server",
 			configureServer(server) {
 				registerMissionControlApi(server); // haven't tested yet
+				registerCronApi(server);
+				registerSubagentApi(server);
 
 				server.middlewares.use("/api/local-file", (req, res) => {
 					const url = new URL(req.url || "", "http://localhost");
