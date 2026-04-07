@@ -78,6 +78,153 @@ type CronJobsStore = {
   jobs?: unknown[];
 };
 
+type CronSchedule =
+  | { kind: "at"; at: string }
+  | { kind: "every"; everyMs: number; anchorMs?: number }
+  | { kind: "cron"; expr: string; tz?: string; staggerMs?: number };
+
+type CronPayload =
+  | { kind: "systemEvent"; text: string }
+  | { kind: "agentTurn"; message: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toNumber(value: unknown, fallback: number) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeSchedule(job: Record<string, unknown>): CronSchedule | unknown {
+  if (isRecord(job.schedule)) {
+    const kind = typeof job.schedule.kind === "string" ? job.schedule.kind : "every";
+    if (kind === "at") {
+      return { kind: "at", at: typeof job.schedule.at === "string" ? job.schedule.at : "" };
+    }
+    if (kind === "cron") {
+      return {
+        kind: "cron",
+        expr: typeof job.schedule.expr === "string" ? job.schedule.expr : "",
+        tz: typeof job.schedule.tz === "string" ? job.schedule.tz : undefined,
+        staggerMs: typeof job.schedule.staggerMs === "number" ? job.schedule.staggerMs : undefined,
+      };
+    }
+    return {
+      kind: "every",
+      everyMs: toNumber(job.schedule.everyMs, 5 * 60_000),
+      anchorMs: typeof job.schedule.anchorMs === "number" ? job.schedule.anchorMs : undefined,
+    };
+  }
+
+  if (typeof job.schedule === "string" && job.schedule.trim()) {
+    return {
+      kind: "cron",
+      expr: job.schedule.trim(),
+    };
+  }
+
+  if (typeof job.scheduleType === "string") {
+    if (job.scheduleType === "at") {
+      return { kind: "at", at: typeof job.scheduleValue === "string" ? job.scheduleValue : "" };
+    }
+    if (job.scheduleType === "cron") {
+      return { kind: "cron", expr: typeof job.scheduleValue === "string" ? job.scheduleValue : "" };
+    }
+    return {
+      kind: "every",
+      everyMs: toNumber(job.scheduleValue, 5) * 60_000,
+    };
+  }
+
+  return {
+    kind: "every",
+    everyMs: 5 * 60_000,
+  };
+}
+
+function normalizePayload(job: Record<string, unknown>): CronPayload {
+  if (isRecord(job.payload)) {
+    const kind = typeof job.payload.kind === "string" ? job.payload.kind : "systemEvent";
+    if (kind === "agentTurn") {
+      return {
+        kind: "agentTurn",
+        message: typeof job.payload.message === "string" ? job.payload.message : typeof job.payload.text === "string" ? job.payload.text : "",
+      };
+    }
+    return {
+      kind: "systemEvent",
+      text: typeof job.payload.text === "string" ? job.payload.text : typeof job.payload.message === "string" ? job.payload.message : "",
+    };
+  }
+
+  if (typeof job.prompt === "string" && job.prompt.trim()) {
+    return {
+      kind: "agentTurn",
+      message: job.prompt.trim(),
+    };
+  }
+
+  return {
+    kind: "systemEvent",
+    text: typeof job.systemText === "string" ? job.systemText : "",
+  };
+}
+
+function normalizeCronJob(job: unknown) {
+  if (!isRecord(job)) return job;
+
+  const nextRunAtMs = isRecord(job.state) ? job.state.nextRunAtMs : undefined;
+  const normalizedState = isRecord(job.state)
+    ? {
+        ...job.state,
+        nextRunAtMs: typeof nextRunAtMs === "number" ? nextRunAtMs : Number(nextRunAtMs),
+      }
+    : undefined;
+
+  const normalized: Record<string, unknown> = {
+    ...job,
+    schedule: normalizeSchedule(job),
+    sessionTarget: typeof job.sessionTarget === "string"
+      ? job.sessionTarget
+      : typeof job.session === "string"
+        ? job.session
+        : typeof job.sessionKey === "string"
+          ? job.sessionKey
+          : "main",
+    wakeMode: typeof job.wakeMode === "string" ? job.wakeMode : "now",
+    payload: normalizePayload(job),
+  };
+
+  delete normalized.scheduleType;
+  delete normalized.scheduleValue;
+  delete normalized.scheduleUnit;
+  delete normalized.session;
+  delete normalized.prompt;
+  delete normalized.systemText;
+
+  if (normalizedState) {
+    normalized.state = normalizedState;
+  }
+
+  if (typeof normalized.createdAtMs !== "number" && typeof normalized.updatedAtMs !== "number") {
+    const now = Date.now();
+    normalized.createdAtMs = now;
+    normalized.updatedAtMs = now;
+  } else if (typeof normalized.updatedAtMs !== "number") {
+    normalized.updatedAtMs = typeof normalized.createdAtMs === "number" ? normalized.createdAtMs : Date.now();
+  }
+
+  return normalized;
+}
+
+function normalizeCronJobsStore(store: Required<CronJobsStore>) {
+  return {
+    ...store,
+    jobs: store.jobs.map((job) => normalizeCronJob(job)),
+  };
+}
+
 function sendJson(res: HttpResponseLike, body: unknown, statusCode = 200) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -111,14 +258,14 @@ function readCronJobsStore(): Required<CronJobsStore> {
   const parsed = readJsonFile(CRON_STORAGE.jobsFile) as CronJobsStore;
   const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
   const version = Number.isFinite(Number(parsed?.version)) ? Number(parsed?.version) : 1;
-  return { version, jobs };
+  return normalizeCronJobsStore({ version, jobs });
 }
 
 function writeCronJobsStore(store: Required<CronJobsStore>) {
   ensureCronStorage();
   fs.writeFileSync(
     CRON_STORAGE.jobsFile,
-    JSON.stringify({ version: store.version, jobs: store.jobs }, null, 2),
+    JSON.stringify(normalizeCronJobsStore(store), null, 2),
     "utf8",
   );
 }
@@ -171,7 +318,7 @@ function listCronJobs() {
     };
   }
   const parsed = readJsonFile(CRON_STORAGE.jobsFile) as { jobs?: unknown[]; version?: unknown };
-  const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
+  const jobs = Array.isArray(parsed.jobs) ? parsed.jobs.map((job) => normalizeCronJob(job)) : [];
   return {
     exists: true,
     file: CRON_STORAGE.jobsFile,
@@ -330,6 +477,8 @@ export function registerCronApi(server: ViteDevServerLike) {
             return;
           }
 
+          const normalizedCandidate = normalizeCronJob(candidate);
+
           const store = readCronJobsStore();
           const exists = store.jobs.some((job) => getJobId(job) === id);
           if (exists) {
@@ -337,7 +486,7 @@ export function registerCronApi(server: ViteDevServerLike) {
             return;
           }
 
-          store.jobs.push(candidate);
+          store.jobs.push(normalizedCandidate);
           writeCronJobsStore(store);
           sendJson(res, { ok: true, action: "created", id, total: store.jobs.length });
           return;
@@ -385,7 +534,7 @@ export function registerCronApi(server: ViteDevServerLike) {
           }
 
           const current = (store.jobs[index] && typeof store.jobs[index] === "object") ? store.jobs[index] as Record<string, unknown> : {};
-          const next = { ...current, ...(patch as Record<string, unknown>), id: jobId };
+          const next = normalizeCronJob({ ...current, ...(patch as Record<string, unknown>), id: jobId });
           store.jobs[index] = next;
           writeCronJobsStore(store);
           sendJson(res, { ok: true, action: "updated", id: jobId, job: next });

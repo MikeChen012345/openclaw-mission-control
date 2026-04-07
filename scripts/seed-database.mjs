@@ -119,6 +119,7 @@ function writeJson(filePath, payload) {
 
 // Sample test data
 const now = new Date().toISOString();
+const nowMs = Date.now();
 
 const sampleTasks = [
   {
@@ -333,32 +334,74 @@ const sampleCronJobs = [
   {
     id: "cron-daily-market-brief",
     name: "Daily Market Brief",
-    schedule: "0 9 * * 1-5",
-    timezone: "UTC",
+    description: "Summarize market activity and key risks on business days.",
     enabled: true,
+    createdAtMs: nowMs - 86_400_000,
+    updatedAtMs: nowMs - 86_400_000,
+    schedule: {
+      kind: "cron",
+      expr: "0 9 * * 1-5",
+      tz: "UTC",
+    },
+    sessionTarget: "main",
     wakeMode: "now",
-    sessionKey: "session-001",
-    prompt: "Summarize market activity and top risks for today.",
+    payload: {
+      kind: "systemEvent",
+      text: "Summarize market activity and top risks for today.",
+    },
+    state: {
+      nextRunAtMs: nowMs + 4 * 60 * 60 * 1000,
+      lastStatus: "ok",
+      lastRunAtMs: nowMs - 20 * 60 * 60 * 1000,
+    },
   },
   {
     id: "cron-security-weekly",
     name: "Weekly Security Sweep",
-    schedule: "0 2 * * 1",
-    timezone: "UTC",
+    description: "Run weekly dependency and policy checks; report critical findings.",
     enabled: true,
+    createdAtMs: nowMs - 48 * 60 * 60 * 1000,
+    updatedAtMs: nowMs - 48 * 60 * 60 * 1000,
+    schedule: {
+      kind: "cron",
+      expr: "0 2 * * 1",
+      tz: "UTC",
+    },
+    sessionTarget: "isolated",
     wakeMode: "now",
-    sessionKey: "session-002",
-    prompt: "Run weekly dependency and policy checks; report critical findings.",
+    payload: {
+      kind: "agentTurn",
+      message: "Run weekly dependency and policy checks; report critical findings.",
+    },
+    state: {
+      nextRunAtMs: nowMs + 2 * 24 * 60 * 60 * 1000,
+      lastStatus: "error",
+      lastRunAtMs: nowMs - 3 * 60 * 60 * 1000,
+      lastError: "Dependency scan timed out for module core-api.",
+    },
   },
   {
     id: "cron-test-coverage-report",
     name: "Coverage Report",
-    schedule: "*/30 * * * *",
-    timezone: "UTC",
+    description: "Collect latest test coverage and post a trend summary.",
     enabled: false,
-    wakeMode: "now",
-    sessionKey: "session-002",
-    prompt: "Collect latest test coverage and post trend summary.",
+    createdAtMs: nowMs - 72 * 60 * 60 * 1000,
+    updatedAtMs: nowMs - 12 * 60 * 60 * 1000,
+    schedule: {
+      kind: "every",
+      everyMs: 30 * 60 * 1000,
+    },
+    sessionTarget: "main",
+    wakeMode: "next-heartbeat",
+    payload: {
+      kind: "systemEvent",
+      text: "Collect latest test coverage and post trend summary.",
+    },
+    state: {
+      nextRunAtMs: nowMs + 30 * 60 * 1000,
+      lastStatus: "skipped",
+      lastRunAtMs: nowMs - 26 * 60 * 60 * 1000,
+    },
   },
 ];
 
