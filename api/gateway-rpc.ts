@@ -1,11 +1,10 @@
-declare const require: (id: string) => any;
 declare const process: { env: Record<string, string | undefined> };
 
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const WebSocket = require("ws");
-const JSON5 = require("json5");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import WebSocket from "ws";
+import JSON5 from "json5";
 
 export type HttpRequestLike = {
   url?: string;
