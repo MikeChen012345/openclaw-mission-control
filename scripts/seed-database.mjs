@@ -8,9 +8,21 @@ import path from "path";
 import os from "os";
 import fs from "fs";
 
+const OPENCLAW_HOME = "/root/.openclaw";
 const DB_PATH = process.env.MISSION_CONTROL_DB_PATH || 
   process.env.SQLITE_DB_PATH || 
-  path.join(os.homedir(), ".openclaw", "mission-control", "events.db");
+  path.join(OPENCLAW_HOME, "mission-control", "events.db");
+
+const CRON_DIR = path.join(OPENCLAW_HOME, "cron");
+const CRON_JOBS_FILE = path.join(CRON_DIR, "jobs.json");
+const CRON_RUNS_DIR = path.join(CRON_DIR, "runs");
+
+const SUBAGENT_DIR = path.join(OPENCLAW_HOME, "subagents");
+const SUBAGENT_RUNS_FILE = path.join(SUBAGENT_DIR, "runs.json");
+
+const AGENTS_DIR = path.join(OPENCLAW_HOME, "agents");
+const SUBAGENT_SESSIONS_FILE_MAIN = path.join(AGENTS_DIR, "main", "sessions", "sessions.json");
+const SUBAGENT_SESSIONS_FILE_RESEARCH = path.join(AGENTS_DIR, "research", "sessions", "sessions.json");
 
 // Ensure directory exists
 const dbDir = path.dirname(DB_PATH);
@@ -93,6 +105,17 @@ function ensureColumnExists(tableName, columnName, columnDefinition) {
 ensureColumnExists("tasks", "sessionId", "sessionId TEXT");
 ensureColumnExists("events", "sessionId", "sessionId TEXT");
 ensureColumnExists("documents", "sessionId", "sessionId TEXT");
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function writeJson(filePath, payload) {
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+}
 
 // Sample test data
 const now = new Date().toISOString();
@@ -306,6 +329,123 @@ const sampleDocuments = [
   }
 ];
 
+const sampleCronJobs = [
+  {
+    id: "cron-daily-market-brief",
+    name: "Daily Market Brief",
+    schedule: "0 9 * * 1-5",
+    timezone: "UTC",
+    enabled: true,
+    wakeMode: "now",
+    sessionKey: "session-001",
+    prompt: "Summarize market activity and top risks for today.",
+  },
+  {
+    id: "cron-security-weekly",
+    name: "Weekly Security Sweep",
+    schedule: "0 2 * * 1",
+    timezone: "UTC",
+    enabled: true,
+    wakeMode: "now",
+    sessionKey: "session-002",
+    prompt: "Run weekly dependency and policy checks; report critical findings.",
+  },
+  {
+    id: "cron-test-coverage-report",
+    name: "Coverage Report",
+    schedule: "*/30 * * * *",
+    timezone: "UTC",
+    enabled: false,
+    wakeMode: "now",
+    sessionKey: "session-002",
+    prompt: "Collect latest test coverage and post trend summary.",
+  },
+];
+
+const sampleCronRuns = {
+  "cron-daily-market-brief": [
+    {
+      ts: Date.now() - 60 * 60 * 1000,
+      jobId: "cron-daily-market-brief",
+      action: "run",
+      status: "ok",
+      summary: "Published brief with 3 key market signals.",
+      sessionKey: "session-001",
+    },
+    {
+      ts: Date.now() - 25 * 60 * 60 * 1000,
+      jobId: "cron-daily-market-brief",
+      action: "run",
+      status: "ok",
+      summary: "Published brief with low volatility alert.",
+      sessionKey: "session-001",
+    },
+  ],
+  "cron-security-weekly": [
+    {
+      ts: Date.now() - 3 * 60 * 60 * 1000,
+      jobId: "cron-security-weekly",
+      action: "run",
+      status: "error",
+      error: "Dependency scan timed out for module core-api.",
+      summary: "Partial scan completed before timeout.",
+      sessionKey: "session-002",
+    },
+  ],
+};
+
+const sampleSubagentRuns = {
+  version: 1,
+  runs: {
+    "sub-run-001": {
+      runId: "sub-run-001",
+      parentRunId: "run-2024-12-15-001",
+      sessionKey: "session-001:subagent:market-scout",
+      parentSessionKey: "session-001",
+      sessionId: "sess-001",
+      agentId: "market-scout",
+      startedAt: Date.now() - 4 * 60 * 1000,
+      status: "completed",
+      summary: "Gathered competitor pricing snapshots.",
+    },
+    "sub-run-002": {
+      runId: "sub-run-002",
+      parentRunId: "run-2024-12-15-004",
+      sessionKey: "session-002:subagent:test-gap-finder",
+      parentSessionKey: "session-002",
+      sessionId: "sess-002",
+      agentId: "test-gap-finder",
+      startedAt: Date.now() - 90 * 1000,
+      status: "completed",
+      summary: "Identified 12 missing concurrency test cases.",
+    },
+  },
+};
+
+const sampleSubagentSessionsMain = {
+  "main:subagent:market-scout": {
+    key: "main:subagent:market-scout",
+    sessionId: "sess-001",
+    label: "Market Scout Subagent",
+    sessionFile: "/root/.openclaw/agents/main/sessions/main-subagent-market-scout.json",
+  },
+  "main:subagent:test-gap-finder": {
+    key: "main:subagent:test-gap-finder",
+    sessionId: "sess-002",
+    label: "Test Gap Finder",
+    sessionFile: "/root/.openclaw/agents/main/sessions/main-subagent-test-gap-finder.json",
+  },
+};
+
+const sampleSubagentSessionsResearch = {
+  "research:subagent:risk-watcher": {
+    key: "research:subagent:risk-watcher",
+    sessionId: "sess-003",
+    label: "Risk Watcher",
+    sessionFile: "/root/.openclaw/agents/research/sessions/research-subagent-risk-watcher.json",
+  },
+};
+
 try {
   // Insert tasks
   console.log("\n📝 Inserting sample tasks...");
@@ -388,6 +528,25 @@ try {
   console.log(`   Tasks: ${taskCount.count}`);
   console.log(`   Events: ${eventCount.count}`);
   console.log(`   Documents: ${docCount.count}`);
+
+  console.log("\n⏰ Writing cron mock data...");
+  ensureDir(CRON_RUNS_DIR);
+  writeJson(CRON_JOBS_FILE, { version: 1, jobs: sampleCronJobs });
+  for (const [jobId, entries] of Object.entries(sampleCronRuns)) {
+    const logPath = path.join(CRON_RUNS_DIR, `${jobId}.jsonl`);
+    const lines = entries.map((entry) => JSON.stringify(entry)).join("\n");
+    fs.writeFileSync(logPath, `${lines}\n`, "utf8");
+    console.log(`  ✓ ${jobId} (${entries.length} runs)`);
+  }
+
+  console.log("\n🤖 Writing subagent mock data...");
+  writeJson(SUBAGENT_RUNS_FILE, sampleSubagentRuns);
+  writeJson(SUBAGENT_SESSIONS_FILE_MAIN, sampleSubagentSessionsMain);
+  writeJson(SUBAGENT_SESSIONS_FILE_RESEARCH, sampleSubagentSessionsResearch);
+  console.log(`  ✓ runs: ${Object.keys(sampleSubagentRuns.runs).length}`);
+  console.log(`  ✓ sessions(main): ${Object.keys(sampleSubagentSessionsMain).length}`);
+  console.log(`  ✓ sessions(research): ${Object.keys(sampleSubagentSessionsResearch).length}`);
+
   console.log("\n🚀 Start the dashboard with: npm run dev:logs-dashboard\n");
 
   db.close();
