@@ -411,7 +411,7 @@ export function registerMissionControlApi(server: ViteDevServer) {
       return;
     }
 
-    if (normalized === "/logs") {
+    if (normalized === "/chatui" || normalized === "/logs") {
       try {
         const params = parsed.searchParams;
         const payload = readLogs({

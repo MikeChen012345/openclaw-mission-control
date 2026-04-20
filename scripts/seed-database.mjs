@@ -49,6 +49,13 @@ db.exec(`
     response TEXT,
     error TEXT,
     source TEXT,
+    inputTokens INTEGER,
+    outputTokens INTEGER,
+    cacheReadTokens INTEGER,
+    cacheWriteTokens INTEGER,
+    totalTokens INTEGER,
+    estimatedCostUsd REAL,
+    responseUsage JSON,
     timestamp DATETIME NOT NULL,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -103,6 +110,13 @@ function ensureColumnExists(tableName, columnName, columnDefinition) {
 }
 
 ensureColumnExists("tasks", "sessionId", "sessionId TEXT");
+ensureColumnExists("tasks", "inputTokens", "inputTokens INTEGER");
+ensureColumnExists("tasks", "outputTokens", "outputTokens INTEGER");
+ensureColumnExists("tasks", "cacheReadTokens", "cacheReadTokens INTEGER");
+ensureColumnExists("tasks", "cacheWriteTokens", "cacheWriteTokens INTEGER");
+ensureColumnExists("tasks", "totalTokens", "totalTokens INTEGER");
+ensureColumnExists("tasks", "estimatedCostUsd", "estimatedCostUsd REAL");
+ensureColumnExists("tasks", "responseUsage", "responseUsage JSON");
 ensureColumnExists("events", "sessionId", "sessionId TEXT");
 ensureColumnExists("documents", "sessionId", "sessionId TEXT");
 
@@ -133,6 +147,20 @@ const sampleTasks = [
     prompt: "Analyze the current market trends in cloud computing and provide key insights for enterprise adoption",
     response: JSON.stringify({ "market_size": "$500B", "growth_rate": "18%", "key_players": ["AWS", "Azure", "GCP"] }),
     source: "openclaw-agent",
+    inputTokens: 1820,
+    outputTokens: 640,
+    cacheReadTokens: 120,
+    cacheWriteTokens: 32,
+    totalTokens: 2612,
+    estimatedCostUsd: 0.1842,
+    responseUsage: JSON.stringify({
+      inputTokens: 1820,
+      outputTokens: 640,
+      cacheReadTokens: 120,
+      cacheWriteTokens: 32,
+      totalTokens: 2612,
+      cost: { total: 0.1842, usd: 0.1842 },
+    }),
     timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString()
   },
   {
@@ -146,6 +174,20 @@ const sampleTasks = [
     prompt: "Create a 12-month technology roadmap prioritizing cloud migration and AI integration",
     response: JSON.stringify({ "phases": 3, "timeline": "12 months", "estimated_cost": "$2.5M" }),
     source: "openclaw-agent",
+    inputTokens: 1450,
+    outputTokens: 880,
+    cacheReadTokens: 64,
+    cacheWriteTokens: 16,
+    totalTokens: 2410,
+    estimatedCostUsd: 0.1725,
+    responseUsage: JSON.stringify({
+      inputTokens: 1450,
+      outputTokens: 880,
+      cacheReadTokens: 64,
+      cacheWriteTokens: 16,
+      totalTokens: 2410,
+      cost: { total: 0.1725, usd: 0.1725 },
+    }),
     timestamp: new Date(Date.now() - 4 * 60 * 1000).toISOString()
   },
   {
@@ -159,6 +201,20 @@ const sampleTasks = [
     prompt: "Review the Java codebase for architectural issues and suggest refactoring priorities",
     error: "Timeout: File analysis exceeded 30 second limit on /src/core/Engine.java",
     source: "openclaw-agent",
+    inputTokens: 980,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 980,
+    estimatedCostUsd: 0.0412,
+    responseUsage: JSON.stringify({
+      inputTokens: 980,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 980,
+      cost: { total: 0.0412, usd: 0.0412 },
+    }),
     timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString()
   },
   {
@@ -172,6 +228,20 @@ const sampleTasks = [
     prompt: "Analyze test coverage and identify areas that need additional test cases",
     response: JSON.stringify({ "coverage": "73%", "gaps": ["error-handling", "concurrency"], "recommendation": "priority-1" }),
     source: "openclaw-agent",
+    inputTokens: 1320,
+    outputTokens: 530,
+    cacheReadTokens: 48,
+    cacheWriteTokens: 12,
+    totalTokens: 1910,
+    estimatedCostUsd: 0.1298,
+    responseUsage: JSON.stringify({
+      inputTokens: 1320,
+      outputTokens: 530,
+      cacheReadTokens: 48,
+      cacheWriteTokens: 12,
+      totalTokens: 1910,
+      cost: { total: 0.1298, usd: 0.1298 },
+    }),
     timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString()
   },
   {
@@ -185,6 +255,20 @@ const sampleTasks = [
     prompt: "Perform security audit on API endpoints and identify vulnerabilities",
     response: null,
     source: "openclaw-agent",
+    inputTokens: 720,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 720,
+    estimatedCostUsd: 0.0285,
+    responseUsage: JSON.stringify({
+      inputTokens: 720,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 720,
+      cost: { total: 0.0285, usd: 0.0285 },
+    }),
     timestamp: new Date(Date.now() - 1 * 60 * 1000).toISOString()
   }
 ];
@@ -493,8 +577,8 @@ try {
   // Insert tasks
   console.log("\n📝 Inserting sample tasks...");
   const insertTask = db.prepare(`
-    INSERT INTO tasks (runId, sessionKey, sessionId, agentId, status, title, description, prompt, response, error, source, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (runId, sessionKey, sessionId, agentId, status, title, description, prompt, response, error, source, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, estimatedCostUsd, responseUsage, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   sampleTasks.forEach((task) => {
@@ -510,6 +594,13 @@ try {
       task.response || null,
       task.error || null,
       task.source,
+      task.inputTokens ?? null,
+      task.outputTokens ?? null,
+      task.cacheReadTokens ?? null,
+      task.cacheWriteTokens ?? null,
+      task.totalTokens ?? null,
+      task.estimatedCostUsd ?? null,
+      task.responseUsage || null,
       task.timestamp
     );
     console.log(`  ✓ ${task.runId} (${task.status})`);

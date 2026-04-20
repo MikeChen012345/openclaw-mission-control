@@ -34,7 +34,7 @@ Through Caddy, these paths are exposed and proxied to `127.0.0.1:8084`:
 
 Use your Caddy host and scheme, for example:
 
-- `https://<caddy-host>/api/mission-control/logs`
+- `https://<caddy-host>/api/mission-control/chatui`
 - `https://<caddy-host>/api/cron/health`
 - `https://<caddy-host>/api/subagents/methods`
 
@@ -66,7 +66,7 @@ Response `200`:
 }
 ```
 
-### GET /logs
+### GET /chatui
 
 Purpose: paginated mission-control task log stream, with optional embedded events/documents.
 
@@ -540,5 +540,5 @@ Errors:
 3. Parse the proxy wrapper first:
 	 - Top-level `ok` and `method`
 	 - Nested `response.ok`, `response.payload`, and `response.error`
-4. `GET /api/mission-control/logs` is read-only against SQLite and does not call gateway RPC.
+4. `GET /api/mission-control/chatui` is read-only against SQLite and does not call gateway RPC.
 5. For robust clients, handle `404`, `405`, `500`, and `502` explicitly.
