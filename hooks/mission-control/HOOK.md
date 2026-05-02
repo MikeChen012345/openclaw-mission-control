@@ -1,4 +1,4 @@
-﻿---
+---
 name: mission-control
 description: "Sync agent lifecycle events to Mission Control dashboard"
 homepage: https://github.com/manish-raana/openclaw-mission-control
