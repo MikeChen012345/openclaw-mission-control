@@ -6,8 +6,9 @@ metadata:
   {
     "openclaw":
       {
-        "emoji": "chart",
+        "emoji": "📊",
         "events": ["gateway:startup", "agent:bootstrap", "command:new"],
+        "requires": { "config": ["workspace.dir"] },
         "install": [{ "id": "user", "kind": "user", "label": "User-installed hook" }],
       },
   }

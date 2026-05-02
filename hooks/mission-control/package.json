@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "name": "mission-control-hook",
+  "version": "1.0.0",
+  "description": "Mission Control hook for OpenClaw - persists events to SQLite database",
+  "main": "handler.ts",
+  "dependencies": {
+    "better-sqlite3": "^9.0.0"
+  }
+}
