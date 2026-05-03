@@ -272,6 +272,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
       totalTokens INTEGER,
       estimatedCostUsd REAL,
       responseUsage JSON,
+      metadata JSON,
       timestamp DATETIME NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -332,6 +333,7 @@ function initializeDatabase(): InstanceType<typeof Database> {
   ensureColumnExists("tasks", "totalTokens", "totalTokens INTEGER");
   ensureColumnExists("tasks", "estimatedCostUsd", "estimatedCostUsd REAL");
   ensureColumnExists("tasks", "responseUsage", "responseUsage JSON");
+  ensureColumnExists("tasks", "metadata", "metadata JSON");
   ensureColumnExists("events", "sessionId", "sessionId TEXT");
   ensureColumnExists("documents", "sessionId", "sessionId TEXT");
 
@@ -429,6 +431,7 @@ async function saveToDatabase(payload: Record<string, unknown>) {
       data,
       agentId,
       document,
+      metadata,
     } = payload as {
       runId?: string;
       action?: string;
@@ -459,6 +462,7 @@ async function saveToDatabase(payload: Record<string, unknown>) {
         type: string;
         path?: string;
       } | null;
+      metadata?: unknown;
     };
 
     // Track task lifecycle
@@ -468,10 +472,10 @@ async function saveToDatabase(payload: Record<string, unknown>) {
           runId, sessionKey, sessionId, agentId, status, title, description,
           prompt, response, error, source,
           inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens,
-          estimatedCostUsd, responseUsage,
+          estimatedCostUsd, responseUsage, metadata,
           timestamp
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -493,10 +497,15 @@ async function saveToDatabase(payload: Record<string, unknown>) {
         totalTokens ?? null,
         estimatedCostUsd ?? null,
         responseUsage ? JSON.stringify(responseUsage) : null,
+        metadata ? JSON.stringify(metadata) : null,
         timestamp
       );
 
-      console.log(`[mission-control] Task ${action} saved to DB for runId: ${runId}`);
+      const tokenSummary = totalTokens ? `(${totalTokens} total)` : inputTokens || outputTokens ? `(input: ${inputTokens}, output: ${outputTokens})` : "(no tokens)";
+      console.log(`[mission-control] Task ${action} saved to DB for runId: ${runId} ${tokenSummary}`);
+      if ((action === "end" || action === "error") && !totalTokens && !inputTokens && !outputTokens) {
+        console.log(`[mission-control] DEBUG - Task ${action} metadata:`, JSON.stringify(metadata).slice(0, 500));
+      }
     }
 
     // Track general events (progress, tool usage, etc.)
