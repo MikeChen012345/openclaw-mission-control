@@ -71,12 +71,6 @@ db.exec(`
     description TEXT,
     message TEXT,
     data JSON,
-    inputTokens INTEGER,
-    outputTokens INTEGER,
-    cacheReadTokens INTEGER,
-    cacheWriteTokens INTEGER,
-    totalTokens INTEGER,
-    estimatedCostUsd REAL,
     timestamp DATETIME NOT NULL,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -290,12 +284,6 @@ const sampleEvents = [
     description: "Initializing search for market analysis data",
     message: "Beginning search for cloud market trends",
     data: JSON.stringify({ tool: "search", args: { query: "cloud market trends 2024" } }),
-    inputTokens: 450,
-    outputTokens: 12,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 462,
-    estimatedCostUsd: 0.00184,
     timestamp: new Date(Date.now() - 4.5 * 60 * 1000).toISOString()
   },
   {
@@ -308,12 +296,6 @@ const sampleEvents = [
     description: "Successfully retrieved 45 relevant sources",
     message: "Found 45 relevant sources for market analysis",
     data: JSON.stringify({ tool: "search", result: { sources: 45, articles: 32, reports: 13 } }),
-    inputTokens: 480,
-    outputTokens: 28,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 508,
-    estimatedCostUsd: 0.00219,
     timestamp: new Date(Date.now() - 4.2 * 60 * 1000).toISOString()
   },
   {
@@ -338,12 +320,6 @@ const sampleEvents = [
     description: "Generating structured roadmap document",
     message: "Starting roadmap document generation",
     data: JSON.stringify({ tool: "document", args: { format: "markdown", type: "roadmap" } }),
-    inputTokens: 520,
-    outputTokens: 15,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 535,
-    estimatedCostUsd: 0.00219,
     timestamp: new Date(Date.now() - 3.5 * 60 * 1000).toISOString()
   },
   {
@@ -356,12 +332,6 @@ const sampleEvents = [
     description: "Beginning codebase analysis process",
     message: "Analyzing Java codebase for issues",
     data: JSON.stringify({ tool: "analyze", args: { language: "java", depth: "full" } }),
-    inputTokens: 380,
-    outputTokens: 8,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 388,
-    estimatedCostUsd: 0.00155,
     timestamp: new Date(Date.now() - 2.5 * 60 * 1000).toISOString()
   },
   {
@@ -374,12 +344,6 @@ const sampleEvents = [
     description: "Large file exceeded timeout threshold",
     message: "Timeout during Engine.java analysis",
     data: JSON.stringify({ error: "timeout", file: "/src/core/Engine.java", duration_ms: 30000 }),
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 0,
-    estimatedCostUsd: 0,
     timestamp: new Date(Date.now() - 2.2 * 60 * 1000).toISOString()
   },
   {
@@ -392,12 +356,6 @@ const sampleEvents = [
     description: "Scanning test files and coverage metrics",
     message: "Running test coverage analysis",
     data: JSON.stringify({ tool: "test_analyze", args: { framework: "junit", threshold: 70 } }),
-    inputTokens: 410,
-    outputTokens: 11,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 421,
-    estimatedCostUsd: 0.00169,
     timestamp: new Date(Date.now() - 1.5 * 60 * 1000).toISOString()
   },
   {
@@ -410,12 +368,6 @@ const sampleEvents = [
     description: "Test coverage analysis completed with detailed metrics",
     message: "Coverage analysis complete: 73% overall",
     data: JSON.stringify({ tool: "test_analyze", result: { coverage: 73, files: 145, gaps: 12 } }),
-    inputTokens: 450,
-    outputTokens: 35,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    totalTokens: 485,
-    estimatedCostUsd: 0.00201,
     timestamp: new Date(Date.now() - 1.2 * 60 * 1000).toISOString()
   }
 ];
@@ -657,8 +609,8 @@ try {
   // Insert events
   console.log("\n📋 Inserting sample events...");
   const insertEvent = db.prepare(`
-    INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, estimatedCostUsd, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   sampleEvents.forEach((event) => {
@@ -672,12 +624,6 @@ try {
       event.description || null,
       event.message || null,
       event.data || null,
-      event.inputTokens ?? null,
-      event.outputTokens ?? null,
-      event.cacheReadTokens ?? null,
-      event.cacheWriteTokens ?? null,
-      event.totalTokens ?? null,
-      event.estimatedCostUsd ?? null,
       event.timestamp
     );
     console.log(`  ✓ ${event.runId} - ${event.eventType}`);

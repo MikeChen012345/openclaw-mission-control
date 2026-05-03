@@ -288,12 +288,6 @@ function initializeDatabase(): InstanceType<typeof Database> {
       description TEXT,
       message TEXT,
       data JSON,
-      inputTokens INTEGER,
-      outputTokens INTEGER,
-      cacheReadTokens INTEGER,
-      cacheWriteTokens INTEGER,
-      totalTokens INTEGER,
-      estimatedCostUsd REAL,
       timestamp DATETIME NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -341,12 +335,6 @@ function initializeDatabase(): InstanceType<typeof Database> {
   ensureColumnExists("tasks", "responseUsage", "responseUsage JSON");
   ensureColumnExists("tasks", "metadata", "metadata JSON");
   ensureColumnExists("events", "sessionId", "sessionId TEXT");
-  ensureColumnExists("events", "inputTokens", "inputTokens INTEGER");
-  ensureColumnExists("events", "outputTokens", "outputTokens INTEGER");
-  ensureColumnExists("events", "cacheReadTokens", "cacheReadTokens INTEGER");
-  ensureColumnExists("events", "cacheWriteTokens", "cacheWriteTokens INTEGER");
-  ensureColumnExists("events", "totalTokens", "totalTokens INTEGER");
-  ensureColumnExists("events", "estimatedCostUsd", "estimatedCostUsd REAL");
   ensureColumnExists("documents", "sessionId", "sessionId TEXT");
 
   // Repair old schemas that used invalid foreign keys on runId.
@@ -529,11 +517,11 @@ async function saveToDatabase(payload: Record<string, unknown>) {
     // Track general events (progress, tool usage, etc.)
     if (eventType && action === "progress") {
       const stmt = database.prepare(`
-        INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, estimatedCostUsd, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO events (runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(runId, sessionKey, sessionId || null, eventType, action, title || null, description || null, message || null, data ? JSON.stringify(data) : null, inputTokens ?? null, outputTokens ?? null, cacheReadTokens ?? null, cacheWriteTokens ?? null, totalTokens ?? null, estimatedCostUsd ?? null, timestamp);
+      stmt.run(runId, sessionKey, sessionId || null, eventType, action, title || null, description || null, message || null, data ? JSON.stringify(data) : null, timestamp);
 
       console.log(`[mission-control] Event saved: ${eventType}`);
     }
@@ -1067,7 +1055,6 @@ const handler = async (event: HookEvent) => {
             const tracked = toolCallId ? pendingToolCalls.get(toolCallId) : null;
             const isError = evt.data?.isError as boolean | undefined;
             const result = evt.data?.result ?? evt.data?.output ?? null;
-           const toolUsage = extractUsageCapture(evt.data);
 
             void postToMissionControl({
               runId: effectiveRunId,
@@ -1082,7 +1069,6 @@ const handler = async (event: HookEvent) => {
                 args: tracked?.args || null,
                 result,
                 isError: Boolean(isError),
-                             ...toolUsage,
                 phase,
                 toolCallId: toolCallId || null,
               },
