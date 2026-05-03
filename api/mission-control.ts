@@ -41,6 +41,12 @@ interface EventRow {
   description: string | null;
   message: string | null;
   data: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  totalTokens: number | null;
+  estimatedCostUsd: number | null;
   timestamp: string;
   createdAt: string;
 }
@@ -301,7 +307,7 @@ function readLogs(options: LogsQueryOptions) {
     }
 
     const events = safeQuery<EventRow>(
-      `SELECT id, runId, sessionKey, sessionId, eventType, action, title, description, message, data, timestamp, createdAt
+      `SELECT id, runId, sessionKey, sessionId, eventType, action, title, description, message, data, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, estimatedCostUsd, timestamp, createdAt
        FROM events
        WHERE ${eventFilterClauses.join(" AND ")}
        ORDER BY id DESC
