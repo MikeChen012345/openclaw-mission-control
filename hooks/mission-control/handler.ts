@@ -465,6 +465,12 @@ async function saveToDatabase(payload: Record<string, unknown>) {
       metadata?: unknown;
     };
 
+    // Default metadata to the full payload when not explicitly provided so we
+    // persist the raw event for forensic inspection. This captures whatever
+    // was sent to `postToMissionControl()` (including nested `data`, `response`,
+    // and token captures) even when callers don't set a `metadata` field.
+    const rawMetadata = metadata ?? payload;
+
     // Track task lifecycle
     if (action === "start" || action === "end" || action === "error") {
       const stmt = database.prepare(`
@@ -497,14 +503,14 @@ async function saveToDatabase(payload: Record<string, unknown>) {
         totalTokens ?? null,
         estimatedCostUsd ?? null,
         responseUsage ? JSON.stringify(responseUsage) : null,
-        metadata ? JSON.stringify(metadata) : null,
+        rawMetadata ? JSON.stringify(rawMetadata) : null,
         timestamp
       );
 
       const tokenSummary = totalTokens ? `(${totalTokens} total)` : inputTokens || outputTokens ? `(input: ${inputTokens}, output: ${outputTokens})` : "(no tokens)";
       console.log(`[mission-control] Task ${action} saved to DB for runId: ${runId} ${tokenSummary}`);
       if ((action === "end" || action === "error") && !totalTokens && !inputTokens && !outputTokens) {
-        console.log(`[mission-control] DEBUG - Task ${action} metadata:`, JSON.stringify(metadata).slice(0, 500));
+        console.log(`[mission-control] DEBUG - Task ${action} metadata:`, JSON.stringify(rawMetadata).slice(0, 500));
       }
     }
 
