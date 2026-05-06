@@ -38,7 +38,8 @@ export const CRON_STORAGE = {
   jobsFile: "/root/.openclaw/cron/jobs.json",
   runsDir: "/root/.openclaw/cron/runs",
 };
-
+  heartbeatFile: "/root/.openclaw/workspace/HEARTBEAT.md",
+};
 export const CRON_RPC_METHODS = {
   list: "cron.list",
   status: "cron.status",
@@ -92,6 +93,25 @@ function normalizeCronAddParams(input: unknown): unknown {
 function readJsonFile(filePath: string): unknown {
   const raw = fs.readFileSync(filePath, "utf8");
   return JSON.parse(raw);
+}
+
+function readHeartbeatFile(): string {
+  if (!fs.existsSync(CRON_STORAGE.heartbeatFile)) {
+    return "";
+  }
+  try {
+    return fs.readFileSync(CRON_STORAGE.heartbeatFile, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function writeHeartbeatFile(content: string): void {
+  const dir = path.dirname(CRON_STORAGE.heartbeatFile);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(CRON_STORAGE.heartbeatFile, content, "utf8");
 }
 
 function listCronJobs() {
@@ -291,6 +311,41 @@ export function registerCronApi(server: ViteDevServerLike) {
         });
         return;
       }
+
+        if (normalized === "/heartbeat" && method === "GET") {
+          const content = readHeartbeatFile();
+          sendJson(res, {
+            ok: true,
+            file: CRON_STORAGE.heartbeatFile,
+            content,
+            isEmpty: !content.trim(),
+          });
+          return;
+        }
+
+        if (normalized === "/heartbeat" && method === "PUT") {
+          const body = await readJsonRequestBody<{ content?: string }>(req);
+          const content = typeof body.content === "string" ? body.content : "";
+          try {
+            writeHeartbeatFile(content);
+            sendJson(res, {
+              ok: true,
+              file: CRON_STORAGE.heartbeatFile,
+              updated: true,
+              isEmpty: !content.trim(),
+            });
+          } catch (error) {
+            sendJson(
+              res,
+              {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              500,
+            );
+          }
+          return;
+        }
 
       if (normalized === "/methods") {
         sendJson(res, {
