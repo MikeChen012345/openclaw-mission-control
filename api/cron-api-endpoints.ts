@@ -37,7 +37,6 @@ export const CRON_STORAGE = {
   stateDir: "/root/.openclaw",
   jobsFile: "/root/.openclaw/cron/jobs.json",
   runsDir: "/root/.openclaw/cron/runs",
-};
   heartbeatFile: "/root/.openclaw/workspace/HEARTBEAT.md",
 };
 export const CRON_RPC_METHODS = {
